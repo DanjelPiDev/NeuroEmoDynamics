@@ -23,23 +23,22 @@ def generate_synthetic_data(profile: str,
     reward_signal = torch.randn(batch_size, reward_size, device=device)
 
     if profile.lower() == 'healthy':
-        # Healthy state: moderate sensory variability and reward signals near zero mean.
         sensory_input = sensory_input * 1.0
         reward_signal = reward_signal * 0.5
     elif profile.lower() == 'depressed':
-        # Depressed state:
-        # - Sensory input could be somewhat subdued.
-        # - Reward signal might have a consistently lower (negative) mean and lower variance.
         sensory_input = sensory_input * 0.8
         reward_signal = reward_signal * 0.2 - 0.5
     elif profile.lower() == 'anxious':
-        # Anxious state:
-        # - Sensory input might be more erratic or “bursty” (here simulated by higher variance).
-        # - Reward signal might be higher and more volatile.
         sensory_input = sensory_input * 1.2
         reward_signal = reward_signal * 1.0 + 0.5
+    elif profile == 'impulsive':
+        sensory_input = sensory_input * 1.4
+        reward_signal = reward_signal * 0.8 + 0.3
+    elif profile == 'resilient':
+        sensory_input = sensory_input * 1.0
+        reward_signal = reward_signal * 0.4
     else:
-        raise ValueError("Unknown profile. Choose from 'healthy', 'depressed', or 'anxious'.")
+        raise ValueError("Unknown profile. Choose from 'healthy', 'depressed', 'anxious', 'impulsive', or 'resilient'.")
 
     t = torch.linspace(0, 2 * np.pi, timesteps, device=device).unsqueeze(1).unsqueeze(2)
     oscillation = 0.1 * torch.sin(t)
@@ -55,7 +54,7 @@ if __name__ == '__main__':
     input_size = 512   # for the prefrontal layer
     reward_size = 1024  # for neuromodulatory input to the striatum
 
-    # Profiles: "healthy", "depressed", or "anxious"
+    # Profiles: "healthy", "depressed", "anxious", "impulsive", "resilient"
     profile = "depressed"
 
     sensory_input, reward_signal = generate_synthetic_data(profile, timesteps, batch_size, input_size, reward_size, device)
