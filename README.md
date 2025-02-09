@@ -66,14 +66,6 @@ cd NeuroEmoDynamics
 pip install -r requirements.txt
 ```
 
-## Usage
-
-```python
-from models.neuro_emo_dynamics import train_model
-
-train_model(num_epochs=10, batch_size=16)
-```
-
 ## How It Works
 
 ### 1. Profile-Based Neuromodulation
