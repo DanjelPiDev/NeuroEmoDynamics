@@ -2,7 +2,7 @@
 
 NeuroEmoDynamics is a biologically inspired spiking neural network (SNN) designed to simulate complex cognitive and emotional states. The project uses by own [Extended LIF Neurons](https://github.com/NullPointerExcy/Extended_LIF_Neurons), by using feedback and cross-connections among key brain regions, including the prefrontal cortex, amygdala, hippocampus, thalamus, and striatum, while integrating text-based emotion analysis.
 
-[Click here to view the interactive visualization](interactive_viz.html)
+Open the interactive_viz.html, to see the visualization (Only 200 neurons for each region, because of performance reasons).
 
 ## Features
 
