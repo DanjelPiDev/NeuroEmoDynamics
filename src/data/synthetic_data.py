@@ -21,46 +21,24 @@ def generate_synthetic_data(profile: str,
     """
     sensory_input = torch.randn(timesteps, batch_size, input_size, device=device)
     reward_signal = torch.randn(batch_size, reward_size, device=device)
-
-    if profile.lower() == 'healthy':
-        sensory_input = sensory_input * 1.0
-        reward_signal = reward_signal * 0.5
-    elif profile.lower() == 'depressed':
-        sensory_input = sensory_input * 0.8
+    p = profile.lower()
+    if p == 'healthy':
+        sensory_input *= 1.0
+        reward_signal *= 0.5
+    elif p == 'depressed':
+        sensory_input *= 0.8
         reward_signal = reward_signal * 0.2 - 0.5
-    elif profile.lower() == 'anxious':
-        sensory_input = sensory_input * 1.2
+    elif p == 'anxious':
+        sensory_input *= 1.2
         reward_signal = reward_signal * 1.0 + 0.5
-    elif profile == 'impulsive':
-        sensory_input = sensory_input * 1.4
+    elif p == 'impulsive':
+        sensory_input *= 1.4
         reward_signal = reward_signal * 0.8 + 0.3
-    elif profile == 'resilient':
-        sensory_input = sensory_input * 1.0
-        reward_signal = reward_signal * 0.4
+    elif p == 'resilient':
+        sensory_input *= 1.0
+        reward_signal *= 0.4
     else:
-        raise ValueError("Unknown profile. Choose from 'healthy', 'depressed', 'anxious', 'impulsive', or 'resilient'.")
-
-    t = torch.linspace(0, 2 * np.pi, timesteps, device=device).unsqueeze(1).unsqueeze(2)
-    oscillation = 0.1 * torch.sin(t)
-    sensory_input += oscillation
-
+        raise ValueError("Options: healthy, depressed, anxious, impulsive, resilient.")
+    t = torch.linspace(0, 2 * np.pi, timesteps, device=device).view(timesteps, 1, 1)
+    sensory_input += 0.1 * torch.sin(t)
     return sensory_input, reward_signal
-
-
-if __name__ == '__main__':
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    timesteps = 50
-    batch_size = 16
-    input_size = 512   # for the prefrontal layer
-    reward_size = 1024  # for neuromodulatory input to the striatum
-
-    # Profiles: "healthy", "depressed", "anxious", "impulsive", "resilient"
-    profile = "depressed"
-
-    sensory_input, reward_signal = generate_synthetic_data(profile, timesteps, batch_size, input_size, reward_size, device)
-
-    print("Sensory input shape:", sensory_input.shape)
-    print("Reward signal shape:", reward_signal.shape)
-
-    print("Sensory input mean/std:", sensory_input.mean().item(), sensory_input.std().item())
-    print("Reward signal mean/std:", reward_signal.mean().item(), reward_signal.std().item())
