@@ -1,12 +1,42 @@
 import numpy as np
 import plotly.graph_objects as go
 import torch
+from datasets import load_dataset
+from safetensors.torch import load_file
 
 from models.neuro_emotional_dynamics import NeuroEmoDynamics
+from utils.helper_functions import build_vocab
+
+dataset = load_dataset("emotion")
+texts = dataset["train"]["text"]
+labels = dataset["train"]["label"]
+
+# Map emotions to psychological profiles
+# 0: "sadness", 1: "joy", 2: "love", 3: "anger", 4: "fear", 5: "surprise"
+emotion_to_profile = {
+    0: 'depressed',  # sadness
+    1: 'healthy',  # joy
+    2: 'healthy',  # love
+    3: 'impulsive',  # anger
+    4: 'anxious',  # fear
+    5: 'resilient'  # surprise / healthy too?
+}
+
+profile_to_idx = {
+    'depressed': 0,
+    'anxious': 1,
+    'healthy': 2,
+    'impulsive': 3,
+    'resilient': 4
+}
+
+# Prepare datasets and vocabulary
+vocab = build_vocab(texts, min_freq=2, max_size=30000)
 
 # -------------------------------
-model = NeuroEmoDynamics(vocab_size=7401)
-model.load_state_dict(torch.load("../checkpoints/neuro_emo_dynamics_10.pt", map_location="cpu"))
+model = NeuroEmoDynamics(vocab)
+state_dict = load_file("../checkpoints/neuro_emo_dynamics_v4.safetensors")
+model.load_state_dict(state_dict)
 model.eval()
 # -------------------------------
 
@@ -25,6 +55,10 @@ integrator_weights = model.integrator.weight.detach().cpu().numpy()
 cross_amyg_hipp_weights = model.cross_amyg_hipp.weight.detach().cpu().numpy()
 cross_hipp_thal_weights = model.cross_hipp_thal.weight.detach().cpu().numpy()
 cross_thal_amyg_weights = model.cross_thal_amyg.weight.detach().cpu().numpy()
+
+serotonin_weights = model.neuromod_gates['serotonin'].weight.detach().cpu().numpy()
+norepinephrine_weights = model.neuromod_gates['norepinephrine'].weight.detach().cpu().numpy()
+dopamine_weights = model.neuromod_gates['dopamine'].weight.detach().cpu().numpy()
 
 # -------------------------------
 # Define sampling sizes (number of neurons to visualize from each region)
@@ -78,11 +112,16 @@ def create_brain_surfaces():
 
 
 region_centers = {
-    "Prefrontal": np.array([0.0, 1.8, 0.0]),  # Anterior (front)
-    "Amygdala": np.array([-0.7, 0.3, -0.2]),  # Medial temporal
-    "Hippocampus": np.array([0.6, -0.5, 0.4]),  # Medial temporal (posterior)
-    "Thalamus": np.array([0.0, 0.0, 0.3]),  # Central
-    "Striatum": np.array([0.0, 0.2, -0.4])  # Basal ganglia region
+    "Prefrontal": np.array([0.0, 1.8, 0.0]),
+    "Amygdala": np.array([-0.7, 0.3, -0.2]),
+    "Hippocampus": np.array([0.6, -0.5, 0.4]),
+    "Thalamus": np.array([0.0, 0.0, 0.3]),
+    "Striatum": np.array([0.0, 0.2, -0.4]),
+    "Raphe Nuclei": np.array([0.0, -1.5, -0.5]),
+    "Locus Coeruleus": np.array([0.0, -1.2, -0.3]),
+    "VTA": np.array([0.0, -1.0, -0.4]),
+    "Insula": np.array([-0.5, 0.5, 0.0]),
+    "ACC": np.array([0.0, 1.0, 0.5]),
 }
 
 
@@ -243,7 +282,41 @@ def build_striatum_connections(integrator_weights, region_positions, striatum_po
 def generate_neuron_positions(region_name, center, num_neurons, radius=0.3, layers=4):
     positions = []
 
-    if region_name == "Prefrontal":
+    if region_name == "Raphe Nuclei":
+        for _ in range(num_neurons):
+            x = 0.0 + np.random.normal(0, 0.05)
+            y = -1.5 + np.random.normal(0, 0.1)
+            z = -0.5 + np.random.normal(0, 0.05)
+            positions.append([x, y, z])
+    elif region_name == "Locus Coeruleus":
+        for _ in range(num_neurons):
+            theta = np.random.uniform(np.pi / 4, 3 * np.pi / 4)
+            r = radius * 0.5 * np.random.rand()
+            x = r * np.cos(theta)
+            y = -1.2 + r * np.sin(theta)
+            z = -0.3 + np.random.normal(0, 0.05)
+            positions.append([x, y, z])
+    elif region_name == "VTA":
+        for _ in range(num_neurons):
+            x = np.random.normal(0, 0.1)
+            y = -1.0 + np.random.normal(0, 0.1)
+            z = -0.4 + np.random.normal(0, 0.05)
+            positions.append([x, y, z])
+    elif region_name == "Insula":
+        for _ in range(num_neurons):
+            theta = np.random.uniform(np.pi / 2, 3 * np.pi / 2)
+            r = radius * np.random.rand() ** 0.5
+            x = -0.5 + r * np.cos(theta)
+            y = 0.5 + r * np.sin(theta)
+            z = 0.0 + np.random.normal(0, 0.1)
+            positions.append([x, y, z])
+    elif region_name == "ACC":
+        for _ in range(num_neurons):
+            x = 0.0 + np.random.normal(0, 0.1)
+            y = 1.0 + np.random.normal(0, 0.1)
+            z = 0.5 + np.random.normal(0, 0.1)
+            positions.append([x, y, z])
+    elif region_name == "Prefrontal":
         # Split prefrontal neurons between hemispheres with cortical column organization
         for i in range(num_neurons):
             # Choose hemisphere (left/right)
@@ -259,7 +332,6 @@ def generate_neuron_positions(region_name, center, num_neurons, radius=0.3, laye
             z = radius * np.cos(phi) * np.cos(theta)
 
             positions.append([x, y, z])
-
     elif region_name == "Amygdala":
         for _ in range(num_neurons):
             theta = np.random.uniform(np.pi / 2, 3 * np.pi / 2)
@@ -268,7 +340,6 @@ def generate_neuron_positions(region_name, center, num_neurons, radius=0.3, laye
             y = 0.3 + r * np.sin(theta)
             z = -0.2 + np.random.normal(0, 0.1)
             positions.append([x, y, z])
-
     elif region_name == "Hippocampus":
         for i in range(num_neurons):
             t = i / num_neurons
@@ -277,14 +348,12 @@ def generate_neuron_positions(region_name, center, num_neurons, radius=0.3, laye
             y = -0.5 + curve_radius * np.sin(t * np.pi)
             z = 0.4 + np.random.normal(0, 0.1)
             positions.append([x, y, z])
-
     elif region_name == "Thalamus":
         for i in range(num_neurons):
             x = np.random.choice([-0.3, 0.3]) if i % 2 == 0 else 0.0
             y = 0.0 + np.random.normal(0, 0.1)
             z = 0.3 + np.random.normal(0, 0.15)
             positions.append([x, y, z])
-
     elif region_name == "Striatum":
         for _ in range(num_neurons):
             theta = np.random.uniform(0, 2 * np.pi)
@@ -293,7 +362,6 @@ def generate_neuron_positions(region_name, center, num_neurons, radius=0.3, laye
             y = 0.2 + r * np.sin(theta)
             z = -0.4 + np.random.normal(0, 0.1)
             positions.append([x, y, z])
-
     else:
         for _ in range(num_neurons):
             vec = np.random.randn(3)
@@ -310,13 +378,23 @@ if __name__ == '__main__':
     hipp_positions = generate_neuron_positions("Hippocampus", region_centers["Hippocampus"], sample_size)
     thal_positions = generate_neuron_positions("Thalamus", region_centers["Thalamus"], sample_size)
     striatum_positions = generate_neuron_positions("Striatum", region_centers["Striatum"], sample_size)
+    raphe_positions = generate_neuron_positions("Raphe Nuclei", region_centers["Raphe Nuclei"], sample_size)
+    locus_positions = generate_neuron_positions("Locus Coeruleus", region_centers["Locus Coeruleus"], sample_size)
+    vta_positions = generate_neuron_positions("VTA", region_centers["VTA"], sample_size)
+    insula_positions = generate_neuron_positions("Insula", region_centers["Insula"], sample_size)
+    acc_positions = generate_neuron_positions("ACC", region_centers["ACC"], sample_size)
 
     region_position_map = {
         'Amygdala': amyg_positions,
         'Hippocampus': hipp_positions,
         'Thalamus': thal_positions,
         'Striatum': striatum_positions,
-        'Prefrontal': pfc_positions
+        'Prefrontal': pfc_positions,
+        'Raphe Nuclei': raphe_positions,
+        'Locus Coeruleus': locus_positions,
+        'VTA': vta_positions,
+        'Insula': insula_positions,
+        'ACC': acc_positions
     }
 
     threshold = 0.01
@@ -331,6 +409,36 @@ if __name__ == '__main__':
     x_amyg, y_amyg, z_amyg = build_connection_lines(pfc_positions, amyg_positions, pfc_amyg_sub, threshold)
     x_hipp, y_hipp, z_hipp = build_connection_lines(pfc_positions, hipp_positions, pfc_hipp_sub, threshold)
     x_thal, y_thal, z_thal = build_connection_lines(pfc_positions, thal_positions, pfc_thal_sub, threshold)
+
+    raphe_indices = np.sort(np.random.choice(256, sample_size, replace=False))
+    pfc_serotonin_indices = np.sort(np.random.choice(pfc_positions.shape[0], sample_size, replace=False))
+    serotonin_sub = serotonin_weights[pfc_serotonin_indices][:, raphe_indices]
+    x_serotonin, y_serotonin, z_serotonin = build_connection_lines(
+        raphe_positions,
+        pfc_positions[pfc_serotonin_indices],
+        serotonin_sub.T,
+        threshold=0.01
+    )
+
+    locus_indices = np.sort(np.random.choice(256, sample_size, replace=False))
+    amyg_ne_indices = np.sort(np.random.choice(pfc_positions.shape[0], sample_size, replace=False))
+    norepinephrine_sub = norepinephrine_weights[amyg_ne_indices][:, locus_indices]
+    x_norepinephrine, y_norepinephrine, z_norepinephrine = build_connection_lines(
+        locus_positions,
+        amyg_positions[amyg_ne_indices],
+        norepinephrine_sub.T,
+        threshold=0.01
+    )
+
+    vta_indices = np.sort(np.random.choice(256, sample_size, replace=False))
+    striatum_da_indices = np.sort(np.random.choice(pfc_positions.shape[0], sample_size, replace=False))
+    dopamine_sub = dopamine_weights[striatum_da_indices][:, vta_indices]
+    x_dopamine, y_dopamine, z_dopamine = build_connection_lines(
+        vta_positions,
+        striatum_positions[striatum_da_indices % sample_size],  # Handle larger striatum size
+        dopamine_sub.T,
+        threshold=0.01
+    )
 
     conn_traces = [
         go.Scatter3d(
@@ -356,9 +464,26 @@ if __name__ == '__main__':
             mode='lines',
             line=dict(color='rgba(200,100,200,0.6)', width=2),
             name='Striatal Integration\n(direct, cross, & feedback)'
+        ),
+        go.Scatter3d(
+            x=x_serotonin, y=y_serotonin, z=z_serotonin,
+            mode='lines',
+            line=dict(color='rgba(255,180,0,0.3)', width=1.2),
+            name='Serotonin Pathways'
+        ),
+        go.Scatter3d(
+            x=x_norepinephrine, y=y_norepinephrine, z=z_norepinephrine,
+            mode='lines',
+            line=dict(color='rgba(0,150,255,0.3)', width=1.2),
+            name='Norepinephrine Pathways'
+        ),
+        go.Scatter3d(
+            x=x_dopamine, y=y_dopamine, z=z_dopamine,
+            mode='lines',
+            line=dict(color='rgba(0,200,50,0.3)', width=1.2),
+            name='Dopamine Pathways'
         )
     ]
-
 
     def create_neuron_trace(positions, region_name, color):
         return go.Scatter3d(
@@ -376,10 +501,16 @@ if __name__ == '__main__':
     trace_hipp = create_neuron_trace(hipp_positions, "Hippocampus", "purple")
     trace_thal = create_neuron_trace(thal_positions, "Thalamus", "orange")
     trace_striatum = create_neuron_trace(striatum_positions, "Striatum", "brown")
+    trace_raphe = create_neuron_trace(raphe_positions, "Raphe Nuclei", "gold")
+    trace_locus = create_neuron_trace(locus_positions, "Locus Coeruleus", "cyan")
+    trace_vta = create_neuron_trace(vta_positions, "VTA", "limegreen")
+    trace_insula = create_neuron_trace(insula_positions, "Insula", "magenta")
+    trace_acc = create_neuron_trace(acc_positions, "ACC", "orange")
 
     fig = go.Figure(data=[
         *create_brain_surfaces(),
         trace_pfc, trace_amyg, trace_hipp, trace_thal, trace_striatum,
+        trace_raphe, trace_locus, trace_vta, trace_insula, trace_acc,
         *conn_traces,
         go.Scatter3d(
             x=[c[0] for c in region_centers.values()],

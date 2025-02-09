@@ -10,10 +10,11 @@ from data.synthetic_data import generate_synthetic_data
 from models.text_encoder import TextEncoder
 from utils.helper_functions import build_vocab
 from sklearn.metrics import roc_auc_score, roc_curve, auc
+from safetensors.torch import save_file
 
 
 class NeuroEmoDynamics(nn.Module):
-    def __init__(self, vocab_size=30000, embed_dim=100, text_hidden_dim=128,
+    def __init__(self, vocab, embed_dim=100, text_hidden_dim=128,
                  modulation_dim=1024, num_classes=6, num_profiles=5, batch_size=16):
         super().__init__()
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -56,10 +57,40 @@ class NeuroEmoDynamics(nn.Module):
                                  neuromod_transform=lambda x: torch.sigmoid(3 * x))
 
         self.feedback = nn.Linear(1024, 512)
+        # STILL IN WORK...
+        # Text processing (I want, that the text can "override" the sensory input)
+        # E.g.: Profile is "depressed", but the text is "positive" -> the model should output "joy/surprise", if the text is strong enough (I feel happy, even though I'm depressed)
+        # E.g.: Profile is "anxious", but the text is "calm" -> the model should output "joy", if the text is strong enough (I feel calm, even though I'm anxious)
+        # So if the text is "self confident" and the profile is "anxious", the model should output "joy" (or "surprise" if the text is strong enough)
+        self.scale_net = nn.Sequential(
+            nn.Linear(modulation_dim + 1, 1),
+            nn.Sigmoid()
+        )
 
-        # Text processing
-        self.text_encoder = TextEncoder(vocab_size, embed_dim, text_hidden_dim, modulation_dim)
-        self.text_classifier = nn.Linear(modulation_dim, num_classes)
+        # Is the text "self-referential"?
+        self.self_ref_classifier = nn.Sequential(
+            nn.Linear(modulation_dim, 1),
+            nn.Sigmoid()
+        )
+
+        self.text_encoder = TextEncoder(len(vocab), embed_dim, text_hidden_dim, modulation_dim)
+        # Learns a gating vector from the text encoding.
+        self.text_gate = nn.Linear(modulation_dim, modulation_dim)
+        self.fusion_layer = nn.Sequential(
+            nn.Linear(modulation_dim + 1024, modulation_dim),
+            nn.ReLU(),
+            nn.Linear(modulation_dim, modulation_dim)
+        )
+        self.fusion_gate = nn.Sequential(
+            nn.Linear(2048, 1),  # 1024 + 1024 if modulation_dim == 1024
+            nn.Sigmoid()
+        )
+        self.text_norm = nn.LayerNorm(modulation_dim)
+        self.integ_norm = nn.LayerNorm(1024)
+
+        self.final_classifier = nn.Linear(modulation_dim, num_classes)
+
+        self.id_to_word = {i: token for token, i in vocab.items()}
 
         self.register_buffer("prev_feedback", torch.zeros(batch_size, 512))
         self.to(self.device)
@@ -71,30 +102,48 @@ class NeuroEmoDynamics(nn.Module):
         norepinephrine = 1 + torch.sigmoid(self.neuromod_gates['norepinephrine'](profile_vec))  # Amygdala gain
         dopamine = torch.sigmoid(self.neuromod_gates['dopamine'](profile_vec))  # Reward salience
 
+        # Emotion-text processing with dopamine modulation
+        text_encoding = self.text_encoder(text_input)
+        # Gate for text encoding, modulated by dopamine
+        gate = torch.sigmoid(self.text_gate(text_encoding))
+        self_ref_flag = self.get_self_reference_flag(text_input, self.id_to_word).to(self.device)
+        augmented_text_encoding = torch.cat([text_encoding, self_ref_flag], dim=-1)
+        sample_scale = self.scale_net(augmented_text_encoding)
+        self_ref_score = self.self_ref_classifier(text_encoding)  # high if the text uses "I", etc.
+        final_scale = sample_scale * self_ref_score
+        text_mod = text_encoding * (gate + dopamine * final_scale)
+
         # Process inputs with profile modulation
         pfc_spikes, _ = self.prefrontal(sensory_input)
         pfc_out = pfc_spikes[-1].float() * serotonin + self.prev_feedback
-
-        # Emotion-text processing with dopamine modulation
-        text_mod = self.text_encoder(text_input) * dopamine
-        logits = self.text_classifier(text_mod)
-
         # Profile-modulated pathway processing
         amyg_in = self.pfc_amyg(pfc_out) * norepinephrine
         hipp_in = self.pfc_hipp(pfc_out)
         thal_in = self.pfc_thal(pfc_out)
-
         # Cross-connections with emotional bias
         cross_ah = self.cross_amyg_hipp(torch.cat([amyg_in, hipp_in], dim=-1))
         cross_ht = self.cross_hipp_thal(torch.cat([hipp_in, thal_in], dim=-1))
         cross_ta = self.cross_thal_amyg(torch.cat([thal_in, amyg_in], dim=-1))
-
         # Integrate with feedback
-        integ_input = torch.cat([amyg_in, hipp_in, thal_in,
-                                 cross_ah, cross_ht, cross_ta,
-                                 self.prev_feedback[:, :256]], dim=-1)
+        integ_input = torch.cat([
+            amyg_in, hipp_in, thal_in,
+            cross_ah, cross_ht, cross_ta,
+            self.prev_feedback[:, :256]
+        ], dim=-1)
         integ_out = self.integrator(integ_input)
-        self.prev_feedback = self.feedback(integ_out).detach()
+
+        new_feedback = self.feedback(integ_out).detach()
+        new_feedback = torch.clamp(new_feedback, min=-10.0, max=10.0)
+        self.prev_feedback = new_feedback
+
+        text_mod = self.text_norm(text_mod)
+        integ_out = self.integ_norm(integ_out)
+
+        fusion_gate_input = torch.cat([text_mod, integ_out], dim=-1)
+        w = self.fusion_gate(fusion_gate_input)
+        fused_rep = w * text_mod + (1 - w) * integ_out
+
+        logits = self.final_classifier(fused_rep)
 
         # Striatal processing with modulated reward
         striatum_input = integ_out.unsqueeze(0).repeat(10, 1, 1) * \
@@ -104,13 +153,27 @@ class NeuroEmoDynamics(nn.Module):
         return spks, volts, logits, serotonin, dopamine, norepinephrine
 
     @staticmethod
+    def decode_tokens(token_tensor, id_to_word):
+        tokens = [id_to_word[int(token)] for token in token_tensor]
+        return " ".join(tokens)
+
+    def get_self_reference_flag(self, token_tensor, id_to_word):
+        first_person_pronouns = {"i", "me", "my", "mine", "we", "us", "our", "ours"}
+        flags = []
+        for sample in token_tensor:
+            text = self.decode_tokens(sample, id_to_word)
+            tokens = text.lower().split()
+            flag = 1.0 if any(token in first_person_pronouns for token in tokens) else 0.0
+            flags.append(flag)
+        return torch.tensor(flags, dtype=torch.float32).unsqueeze(1)
+
+    @staticmethod
     def compute_depression_score(voltages):
         return voltages.var(dim=0, unbiased=False).mean()
 
 
 def hybrid_loss(logits, targets, neurotransmitters, profile_ids,
                 alpha=0.7, beta=0.2, gamma=0.1):
-    # Classification loss
     ce_loss = F.cross_entropy(logits, targets)
 
     # Neuromodulatory consistency loss
@@ -130,7 +193,8 @@ def hybrid_loss(logits, targets, neurotransmitters, profile_ids,
     )
 
     # Emotional coherence penalty
-    prob_emotions = F.softmax(logits, dim=1)
+    eps = 1e-8
+    prob_emotions = F.softmax(logits, dim=1) + eps
     emotion_bias = torch.tensor([
         [0.8, 0.1, 0.1, 0.0, 0.0, 0.0],  # Depressed
         [0.1, 0.1, 0.1, 0.7, 0.0, 0.0],  # Anxious
@@ -159,7 +223,7 @@ def generate_profile_signals(profile: str, batch_size: int, device: str):
     return torch.full((batch_size,), profile_map[profile], device=device)
 
 
-def train_model(num_epochs=100, batch_size=16, timesteps=50, lr=1e-3):
+def train_model(num_epochs=10, batch_size=16, timesteps=50, lr=1e-3):
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
     # Load dataset (using Hugging Face's datasets)
@@ -168,13 +232,14 @@ def train_model(num_epochs=100, batch_size=16, timesteps=50, lr=1e-3):
     labels = dataset["train"]["label"]
 
     # Map emotions to psychological profiles
+    # 0: "sadness", 1: "joy", 2: "love", 3: "anger", 4: "fear", 5: "surprise"
     emotion_to_profile = {
         0: 'depressed',  # sadness
         1: 'healthy',  # joy
         2: 'healthy',  # love
-        3: 'anxious',  # anger
+        3: 'impulsive',  # anger
         4: 'anxious',  # fear
-        5: 'resilient'  # surprise
+        5: 'resilient'  # surprise / healthy too?
     }
 
     profile_to_idx = {
@@ -194,7 +259,7 @@ def train_model(num_epochs=100, batch_size=16, timesteps=50, lr=1e-3):
 
     # Initialize model
     model = NeuroEmoDynamics(
-        vocab_size=len(vocab),
+        vocab,
         num_classes=6,
         num_profiles=5,
         batch_size=batch_size
@@ -247,12 +312,13 @@ def train_model(num_epochs=100, batch_size=16, timesteps=50, lr=1e-3):
             )
 
             loss.backward()
+            # torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
             optimizer.step()
             total_loss += loss.item()
 
         avg_train_loss = total_loss / len(train_dataloader)
 
-        # ---- Validation ----
+        # ================ Validation ================
         model.eval()
         val_losses = []
         all_preds = []
@@ -313,14 +379,8 @@ def train_model(num_epochs=100, batch_size=16, timesteps=50, lr=1e-3):
         print(
             f"Epoch {epoch + 1}: Train Loss {avg_train_loss:.4f} | Val Loss {avg_val_loss:.4f} | Val AUC {val_auc:.4f}")
 
-        # Optionally, save model checkpoints every 10 epochs
-        if (epoch + 1) % 10 == 0:
-            torch.save(model.state_dict(), f"../checkpoints/neuro_emo_dynamics_{epoch + 1}.pt",
-                       _use_new_zipfile_serialization=False)
-
-    # Save the final model
-    torch.save(model.state_dict(), "../checkpoints/neuro_emo_dynamics.pt", _use_new_zipfile_serialization=False)
+    save_file(model.state_dict(), "../checkpoints/neuro_emo_dynamics_v4.safetensors")
 
 
 if __name__ == "__main__":
-    train_model()
+    train_model(num_epochs=10)
