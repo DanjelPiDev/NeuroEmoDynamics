@@ -76,6 +76,20 @@ pfc_amyg_sub = pfc_amyg_weights[np.ix_(amyg_indices, pfc_indices)]
 pfc_hipp_sub = pfc_hipp_weights[np.ix_(hipp_indices, pfc_indices)]
 pfc_thal_sub = pfc_thal_weights[np.ix_(thal_indices, pfc_indices)]
 
+region_centers = {
+    "Prefrontal": np.array([0.0, 2.0, 0.0]),
+    "Amygdala": np.array([-1.0, 0.5, -0.5]),
+    "Hippocampus": np.array([0.0, -1.0, 0.5]),
+    "Thalamus": np.array([0.0, 0.0, 0.5]),
+    "Hypothalamus": np.array([0.0, -0.2, -0.1]),
+    "Striatum": np.array([1.2, 0.3, -0.3]),
+    "Raphe Nuclei": np.array([0.0, -1.8, -0.6]),
+    "Locus Coeruleus": np.array([0.0, -1.5, -0.4]),
+    "VTA": np.array([0.0, -1.2, -0.5]),
+    "Insula": np.array([1.0, 0.0, 0.0]),
+    "ACC": np.array([0.0, 1.5, 0.7]),
+}
+
 
 def create_brain_surfaces():
     surfaces = []
@@ -111,21 +125,7 @@ def create_brain_surfaces():
     return surfaces
 
 
-region_centers = {
-    "Prefrontal": np.array([0.0, 1.8, 0.0]),
-    "Amygdala": np.array([-0.7, 0.3, -0.2]),
-    "Hippocampus": np.array([0.6, -0.5, 0.4]),
-    "Thalamus": np.array([0.0, 0.0, 0.3]),
-    "Striatum": np.array([0.0, 0.2, -0.4]),
-    "Raphe Nuclei": np.array([0.0, -1.5, -0.5]),
-    "Locus Coeruleus": np.array([0.0, -1.2, -0.3]),
-    "VTA": np.array([0.0, -1.0, -0.4]),
-    "Insula": np.array([-0.5, 0.5, 0.0]),
-    "ACC": np.array([0.0, 1.0, 0.5]),
-}
-
-
-def build_connection_lines(source_positions, target_positions, weight_submatrix, threshold):
+def build_connection_lines(source_positions, target_positions, weight_submatrix, threshold, source_name, target_name):
     x_lines, y_lines, z_lines = [], [], []
     for i in range(weight_submatrix.shape[0]):
         for j in range(weight_submatrix.shape[1]):
@@ -134,17 +134,26 @@ def build_connection_lines(source_positions, target_positions, weight_submatrix,
                 start = source_positions[j]
                 end = target_positions[i]
 
-                # Create curved path with intermediate control points
-                mid1 = start + (end - start) * 0.3 + np.random.normal(0, 0.1, 3)
-                mid2 = start + (end - start) * 0.7 + np.random.normal(0, 0.1, 3)
+                mid_points = []
+                if "Amygdala" in [source_name, target_name]:
+                    mid_points.append(start + [0, -0.5, 0])
+                elif "Hippocampus" in [source_name, target_name]:
+                    mid_points.append(start + [0, 0.3, 0.2])
 
-                t = np.linspace(0, 1, 10)
-                x = (1 - t) ** 3 * start[0] + 3 * (1 - t) ** 2 * t * mid1[0] + 3 * (1 - t) * t ** 2 * mid2[0] + t ** 3 * \
-                    end[0]
-                y = (1 - t) ** 3 * start[1] + 3 * (1 - t) ** 2 * t * mid1[1] + 3 * (1 - t) * t ** 2 * mid2[1] + t ** 3 * \
-                    end[1]
-                z = (1 - t) ** 3 * start[2] + 3 * (1 - t) ** 2 * t * mid1[2] + 3 * (1 - t) * t ** 2 * mid2[2] + t ** 3 * \
-                    end[2]
+                t = np.linspace(0, 1, 20)
+                if len(mid_points) == 1:
+                    x = (1-t)**2 * start[0] + 2*(1-t)*t*mid_points[0][0] + t**2*end[0]
+                    y = (1-t)**2 * start[1] + 2*(1-t)*t*mid_points[0][1] + t**2*end[1]
+                    z = (1-t)**2 * start[2] + 2*(1-t)*t*mid_points[0][2] + t**2*end[2]
+                else:
+                    curve_dir = np.cross(end-start, np.random.randn(3))
+                    curve_dir /= np.linalg.norm(curve_dir)
+                    curve_mag = 0.3 * np.linalg.norm(end-start)
+                    mid = 0.5*(start+end) + curve_dir*curve_mag
+
+                    x = (1-t)**2 * start[0] + 2*(1-t)*t*mid[0] + t**2*end[0]
+                    y = (1-t)**2 * start[1] + 2*(1-t)*t*mid[1] + t**2*end[1]
+                    z = (1-t)**2 * start[2] + 2*(1-t)*t*mid[2] + t**2*end[2]
 
                 x_lines.extend(x)
                 y_lines.extend(y)
@@ -281,6 +290,7 @@ def build_striatum_connections(integrator_weights, region_positions, striatum_po
 
 def generate_neuron_positions(region_name, center, num_neurons, radius=0.3, layers=4):
     positions = []
+    base_noise = radius * 0.2
 
     if region_name == "Raphe Nuclei":
         for _ in range(num_neurons):
@@ -317,50 +327,61 @@ def generate_neuron_positions(region_name, center, num_neurons, radius=0.3, laye
             z = 0.5 + np.random.normal(0, 0.1)
             positions.append([x, y, z])
     elif region_name == "Prefrontal":
-        # Split prefrontal neurons between hemispheres with cortical column organization
         for i in range(num_neurons):
-            # Choose hemisphere (left/right)
-            hemisphere = -0.7 if i % 2 == 0 else 0.7
-            cortical_layer = i % layers
-            depth = cortical_layer * 0.15
+            layer = i % 6
+            hemisphere = np.random.choice([-1, 1])
+            angle = np.random.uniform(-np.pi/3, np.pi/3)
 
-            theta = np.random.uniform(np.pi / 4, 3 * np.pi / 4)
-            phi = np.random.uniform(-np.pi / 6, np.pi / 6)
-
-            x = hemisphere + radius * np.cos(theta) * np.sin(phi)
-            y = 1.8 + radius * np.sin(theta) + depth
-            z = radius * np.cos(phi) * np.cos(theta)
-
+            x = hemisphere * (0.5 + layer*0.05) + np.random.normal(0, 0.05)
+            y = 2.0 - layer*0.1 + np.random.normal(0, 0.05)
+            z = np.sin(angle)*(0.3 + layer*0.05) + np.random.normal(0, 0.05)
             positions.append([x, y, z])
     elif region_name == "Amygdala":
-        for _ in range(num_neurons):
-            theta = np.random.uniform(np.pi / 2, 3 * np.pi / 2)
-            r = radius * np.random.rand() ** 0.5
-            x = -0.7 + r * np.cos(theta)
-            y = 0.3 + r * np.sin(theta)
-            z = -0.2 + np.random.normal(0, 0.1)
-            positions.append([x, y, z])
-    elif region_name == "Hippocampus":
+        # Nuclei-based clustering
+        nuclei_centers = [
+            center + np.array([-0.2, 0.1, -0.1]),
+            center + np.array([0.3, -0.1, 0.2]),
+            center + np.array([0.0, 0.2, -0.3])
+        ]
         for i in range(num_neurons):
-            t = i / num_neurons
-            curve_radius = radius * 0.8
-            x = 0.6 + curve_radius * np.cos(t * np.pi)
-            y = -0.5 + curve_radius * np.sin(t * np.pi)
-            z = 0.4 + np.random.normal(0, 0.1)
+            nucleus = nuclei_centers[np.random.choice(len(nuclei_centers))]
+            pos = nucleus + np.random.normal(0, 0.15, 3)
+            positions.append(pos)
+    elif region_name == "Hippocampus":
+        # Curved structure along anterior-posterior axis
+        theta = np.linspace(-np.pi/2, np.pi/2, num_neurons)
+        for t in theta:
+            x = 0.5 * np.cos(t) + np.random.normal(0, 0.05)
+            y = -1.0 + 0.8 * np.sin(t) + np.random.normal(0, 0.05)
+            z = 0.5 * np.cos(t) + np.random.normal(0, 0.05)
             positions.append([x, y, z])
     elif region_name == "Thalamus":
+        # Medial-lateral nuclear groups
         for i in range(num_neurons):
-            x = np.random.choice([-0.3, 0.3]) if i % 2 == 0 else 0.0
-            y = 0.0 + np.random.normal(0, 0.1)
-            z = 0.3 + np.random.normal(0, 0.15)
+            if i % 2 == 0:  # Medial nuclei
+                x = np.random.normal(0, 0.1)
+            else:           # Lateral nuclei
+                x = np.random.normal(0.4 * np.random.choice([-1,1]), 0.15)
+            y = np.random.normal(0, 0.15)
+            z = 0.5 + np.random.normal(0, 0.2)
             positions.append([x, y, z])
-    elif region_name == "Striatum":
+    elif region_name == "Hypothalamus":
+        # Cluster around third ventricle
         for _ in range(num_neurons):
-            theta = np.random.uniform(0, 2 * np.pi)
-            r = radius * np.random.rand() ** 0.5
-            x = r * np.cos(theta)
-            y = 0.2 + r * np.sin(theta)
-            z = -0.4 + np.random.normal(0, 0.1)
+            pos = center + np.random.normal(0, 0.1, 3)
+            positions.append(pos)
+    elif region_name == "Striatum":
+        # Split into caudate and putamen
+        for i in range(num_neurons):
+            hemisphere = np.random.choice([-1, 1])
+            if i % 2 == 0:  # Putamen-like
+                x = hemisphere * (1.0 + np.random.normal(0, 0.1))
+                y = 0.3 + np.random.normal(0, 0.1)
+                z = -0.3 + np.random.normal(0, 0.1)
+            else:           # Caudate-like
+                x = hemisphere * (0.8 + np.random.normal(0, 0.1))
+                y = 0.5 + np.random.normal(0, 0.1)
+                z = 0.1 + np.random.normal(0, 0.1)
             positions.append([x, y, z])
     else:
         for _ in range(num_neurons):
@@ -369,7 +390,7 @@ def generate_neuron_positions(region_name, center, num_neurons, radius=0.3, laye
             r = radius * np.random.rand() ** (1 / 3)
             positions.append(center + r * vec)
 
-    return np.array(positions)
+    return np.clip(np.array(positions), center-radius, center+radius)
 
 
 if __name__ == '__main__':
@@ -406,9 +427,18 @@ if __name__ == '__main__':
         threshold=threshold
     )
 
-    x_amyg, y_amyg, z_amyg = build_connection_lines(pfc_positions, amyg_positions, pfc_amyg_sub, threshold)
-    x_hipp, y_hipp, z_hipp = build_connection_lines(pfc_positions, hipp_positions, pfc_hipp_sub, threshold)
-    x_thal, y_thal, z_thal = build_connection_lines(pfc_positions, thal_positions, pfc_thal_sub, threshold)
+    x_amyg, y_amyg, z_amyg = build_connection_lines(
+        pfc_positions, amyg_positions, pfc_amyg_sub, threshold,
+        source_name="Prefrontal", target_name="Amygdala"
+    )
+    x_hipp, y_hipp, z_hipp = build_connection_lines(
+        pfc_positions, hipp_positions, pfc_hipp_sub, threshold,
+        source_name="Prefrontal", target_name="Hippocampus"
+    )
+    x_thal, y_thal, z_thal = build_connection_lines(
+        pfc_positions, thal_positions, pfc_thal_sub, threshold,
+        source_name="Prefrontal", target_name="Thalamus"
+    )
 
     raphe_indices = np.sort(np.random.choice(256, sample_size, replace=False))
     pfc_serotonin_indices = np.sort(np.random.choice(pfc_positions.shape[0], sample_size, replace=False))
@@ -417,7 +447,9 @@ if __name__ == '__main__':
         raphe_positions,
         pfc_positions[pfc_serotonin_indices],
         serotonin_sub.T,
-        threshold=0.01
+        threshold=0.01,
+        source_name="Raphe Nuclei",
+        target_name="Prefrontal"
     )
 
     locus_indices = np.sort(np.random.choice(256, sample_size, replace=False))
@@ -427,7 +459,9 @@ if __name__ == '__main__':
         locus_positions,
         amyg_positions[amyg_ne_indices],
         norepinephrine_sub.T,
-        threshold=0.01
+        threshold=0.01,
+        source_name="Locus Coeruleus",
+        target_name="Amygdala"
     )
 
     vta_indices = np.sort(np.random.choice(256, sample_size, replace=False))
@@ -435,9 +469,11 @@ if __name__ == '__main__':
     dopamine_sub = dopamine_weights[striatum_da_indices][:, vta_indices]
     x_dopamine, y_dopamine, z_dopamine = build_connection_lines(
         vta_positions,
-        striatum_positions[striatum_da_indices % sample_size],  # Handle larger striatum size
+        striatum_positions[striatum_da_indices % sample_size],
         dopamine_sub.T,
-        threshold=0.01
+        threshold=0.01,
+        source_name="VTA",
+        target_name="Striatum"
     )
 
     conn_traces = [

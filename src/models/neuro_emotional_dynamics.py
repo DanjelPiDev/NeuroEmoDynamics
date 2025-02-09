@@ -379,7 +379,7 @@ def train_model(num_epochs=10, batch_size=16, timesteps=50, lr=1e-3):
         print(
             f"Epoch {epoch + 1}: Train Loss {avg_train_loss:.4f} | Val Loss {avg_val_loss:.4f} | Val AUC {val_auc:.4f}")
 
-    save_file(model.state_dict(), "../checkpoints/neuro_emo_dynamics_v4.safetensors")
+    save_file(model.state_dict(), "../checkpoints/neuro_emo_dynamics_v5.safetensors")
 
 
 if __name__ == "__main__":
