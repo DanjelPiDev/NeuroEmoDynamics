@@ -10,7 +10,7 @@ striatum, while integrating text-based emotion analysis.
 
 ## Features
 
-### 🧠 Biologically Inspired Architecture
+### Biologically Inspired Architecture
 
 - **Prefrontal Cortex (PFC):** Receives sensory inputs and modulates downstream regions.
 - **Downstream Regions:**
@@ -22,14 +22,14 @@ striatum, while integrating text-based emotion analysis.
 - **Striatum Integration:**
     - A final layer that aggregates signals for state estimation and emotional decision-making.
 
-### ⚡ Extended LIF Neuron Model
+### Extended LIF Neuron Model
 
 - Uses an enhanced Leaky Integrate-and-Fire (LIF) model with:
     - Neuromodulation mechanisms (serotonin, dopamine, norepinephrine) that regulate different regions.
     - Adaptive thresholds and noise integration.
     - Cross-neural interaction to simulate brain dynamics.
 
-### 📝 Text-Based Emotion Analysis
+### Text-Based Emotion Analysis
 
 - A separate **text-processing branch** using:
     - **Embedding layer** and **LSTM-based encoder**.
@@ -37,7 +37,7 @@ striatum, while integrating text-based emotion analysis.
     - **Gating mechanisms** to allow text to override sensory/emotional biases (e.g., *"I feel happy even though I am
       depressed"*).
 
-### 🔬 Synthetic Data Generation
+### Synthetic Data Generation
 
 - Generates **synthetic sensory input and reward signals** based on different psychological profiles:
     - **Healthy**
@@ -46,7 +46,7 @@ striatum, while integrating text-based emotion analysis.
     - **Impulsive**
     - **Resilient**
 
-### 🎨 Visualization Tools
+### Visualization Tools
 
 - Run the `model_neuron_plot.py` script with a trained model, then open `interactive_viz.html` to visualize *(Limited to
   200 neurons per region for performance reasons.)*.
@@ -98,7 +98,7 @@ train_model(num_epochs=10, batch_size=16)
 - Feedback from the **amygdala, hippocampus, and thalamus** refines responses.
 - **Striatum integrates all signals** to produce final outputs (emotion classification).
 
-## Roadmap 🛠️
+## Roadmap
 
 - [ ] Improve text-based emotion influence.
 - [ ] Optimize the LIF neuron feedback mechanisms.
