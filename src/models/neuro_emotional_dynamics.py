@@ -73,6 +73,8 @@ class NeuroEmoDynamics(nn.Module):
             nn.Sigmoid()
         )
 
+        self.text_override_layer = nn.Linear(modulation_dim, 1)
+
         self.text_encoder = TextEncoder(len(vocab), embed_dim, text_hidden_dim, modulation_dim)
         # Learns a gating vector from the text encoding.
         self.text_gate = nn.Linear(modulation_dim, modulation_dim)
@@ -95,15 +97,18 @@ class NeuroEmoDynamics(nn.Module):
         self.register_buffer("prev_feedback", torch.zeros(batch_size, 512))
         self.to(self.device)
 
-    def forward(self, sensory_input, reward_signal, text_input, profile_ids):
+    def forward(self, sensory_input, reward_signal, text_input, profile_ids=None, profile_vec=None):
         # Profile-based modulation
         profile_vec = self.profile_embedding(profile_ids)
+
         serotonin = torch.sigmoid(self.neuromod_gates['serotonin'](profile_vec))  # PFC modulation
         norepinephrine = 1 + torch.sigmoid(self.neuromod_gates['norepinephrine'](profile_vec))  # Amygdala gain
         dopamine = torch.sigmoid(self.neuromod_gates['dopamine'](profile_vec))  # Reward salience
 
         # Emotion-text processing with dopamine modulation
         text_encoding = self.text_encoder(text_input)
+        aux_logits = self.final_classifier(text_encoding)
+
         # Gate for text encoding, modulated by dopamine
         gate = torch.sigmoid(self.text_gate(text_encoding))
         self_ref_flag = self.get_self_reference_flag(text_input, self.id_to_word).to(self.device)
@@ -116,14 +121,17 @@ class NeuroEmoDynamics(nn.Module):
         # Process inputs with profile modulation
         pfc_spikes, _ = self.prefrontal(sensory_input)
         pfc_out = pfc_spikes[-1].float() * serotonin + self.prev_feedback
+
         # Profile-modulated pathway processing
         amyg_in = self.pfc_amyg(pfc_out) * norepinephrine
         hipp_in = self.pfc_hipp(pfc_out)
         thal_in = self.pfc_thal(pfc_out)
+
         # Cross-connections with emotional bias
         cross_ah = self.cross_amyg_hipp(torch.cat([amyg_in, hipp_in], dim=-1))
         cross_ht = self.cross_hipp_thal(torch.cat([hipp_in, thal_in], dim=-1))
         cross_ta = self.cross_thal_amyg(torch.cat([thal_in, amyg_in], dim=-1))
+
         # Integrate with feedback
         integ_input = torch.cat([
             amyg_in, hipp_in, thal_in,
@@ -139,8 +147,9 @@ class NeuroEmoDynamics(nn.Module):
         text_mod = self.text_norm(text_mod)
         integ_out = self.integ_norm(integ_out)
 
-        fusion_gate_input = torch.cat([text_mod, integ_out], dim=-1)
-        w = self.fusion_gate(fusion_gate_input)
+        override_score = torch.sigmoid(self.text_override_layer(text_mod))
+        w = self.fusion_gate(torch.cat([text_mod, integ_out], dim=-1))
+        w = torch.max(w, override_score)
         fused_rep = w * text_mod + (1 - w) * integ_out
 
         logits = self.final_classifier(fused_rep)
@@ -150,7 +159,7 @@ class NeuroEmoDynamics(nn.Module):
                          reward_signal.unsqueeze(0) * dopamine.unsqueeze(0)
         spks, volts = self.striatum(striatum_input)
 
-        return spks, volts, logits, serotonin, dopamine, norepinephrine
+        return spks, volts, logits, aux_logits, serotonin, dopamine, norepinephrine
 
     @staticmethod
     def decode_tokens(token_tensor, id_to_word):
@@ -180,11 +189,11 @@ def hybrid_loss(logits, targets, neurotransmitters, profile_ids,
     serotonin, dopamine, norepinephrine = neurotransmitters
     profile_factor = F.one_hot(profile_ids, num_classes=5).float()
     expected_levels = torch.tensor([
-        [0.3, 0.4, 0.6],  # Depressed
-        [0.6, 0.5, 0.8],  # Anxious
-        [0.8, 0.7, 0.5],  # Healthy
-        [0.5, 0.6, 0.7],  # Impulsive
-        [0.7, 0.5, 0.6]  # Resilient
+        [0.3, 0.4, 0.6],
+        [0.6, 0.5, 0.8],
+        [0.8, 0.7, 0.5],
+        [0.5, 0.6, 0.7],
+        [0.7, 0.5, 0.6]
     ], device=profile_ids.device)
 
     neuromod_loss = F.mse_loss(
@@ -223,16 +232,15 @@ def generate_profile_signals(profile: str, batch_size: int, device: str):
     return torch.full((batch_size,), profile_map[profile], device=device)
 
 
-def train_model(num_epochs=10, batch_size=16, timesteps=50, lr=1e-3):
+def train_model(num_epochs=10, batch_size=16, timesteps=50, lr=1e-3, lambda_aux=0.5):
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
     # Load dataset (using Hugging Face's datasets)
-    dataset = load_dataset("emotion")
+    dataset = load_dataset("dair-ai/emotion", "split")
     texts = dataset["train"]["text"]
     labels = dataset["train"]["label"]
 
     # Map emotions to psychological profiles
-    # 0: "sadness", 1: "joy", 2: "love", 3: "anger", 4: "fear", 5: "surprise"
     emotion_to_profile = {
         0: 'depressed',  # sadness
         1: 'healthy',  # joy
@@ -269,7 +277,7 @@ def train_model(num_epochs=10, batch_size=16, timesteps=50, lr=1e-3):
 
     for epoch in range(num_epochs):
         model.train()
-        total_loss = 0.0
+        _total_loss = 0.0
 
         for batch in train_dataloader:
             text_in = batch["text"].to(device)
@@ -300,23 +308,26 @@ def train_model(num_epochs=10, batch_size=16, timesteps=50, lr=1e-3):
             reward_signal = torch.cat(reward_signals, dim=0)
 
             optimizer.zero_grad()
-            spks, volts, logits, serotonin, dopamine, norepinephrine = model(
+            spks, volts, logits, aux_logits, serotonin, dopamine, norepinephrine = model(
                 sensory_input, reward_signal, text_in, profile_ids
             )
 
-            loss = hybrid_loss(
+            primary_loss = hybrid_loss(
                 logits=logits,
                 targets=batch_labels,
                 neurotransmitters=(serotonin, dopamine, norepinephrine),
                 profile_ids=profile_ids
             )
+            aux_loss = F.cross_entropy(aux_logits, batch_labels)
+            total_loss = primary_loss + lambda_aux * aux_loss
 
-            loss.backward()
+            total_loss.backward()
             # torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
             optimizer.step()
-            total_loss += loss.item()
 
-        avg_train_loss = total_loss / len(train_dataloader)
+            _total_loss += total_loss.item()
+
+        avg_train_loss = _total_loss / len(train_dataloader)
 
         # ================ Validation ================
         model.eval()
@@ -350,16 +361,18 @@ def train_model(num_epochs=10, batch_size=16, timesteps=50, lr=1e-3):
                 sensory_input = torch.cat(sensory_inputs, dim=1)
                 reward_signal = torch.cat(reward_signals, dim=0)
 
-                spks, volts, logits, serotonin, dopamine, norepinephrine = model(
+                spks, volts, logits, aux_logits, serotonin, dopamine, norepinephrine = model(
                     sensory_input, reward_signal, text_in, profile_ids
                 )
 
-                loss = hybrid_loss(
+                primary_loss = hybrid_loss(
                     logits=logits,
                     targets=batch_labels,
                     neurotransmitters=(serotonin, dopamine, norepinephrine),
                     profile_ids=profile_ids
                 )
+                aux_loss = F.cross_entropy(aux_logits, batch_labels)
+                loss = primary_loss + lambda_aux * aux_loss
                 val_losses.append(loss.item())
 
                 # Get probabilities and store predictions
@@ -379,8 +392,8 @@ def train_model(num_epochs=10, batch_size=16, timesteps=50, lr=1e-3):
         print(
             f"Epoch {epoch + 1}: Train Loss {avg_train_loss:.4f} | Val Loss {avg_val_loss:.4f} | Val AUC {val_auc:.4f}")
 
-    save_file(model.state_dict(), "../checkpoints/neuro_emo_dynamics_v5.safetensors")
+    save_file(model.state_dict(), "../checkpoints/neuro_emo_dynamics_v6.safetensors")
 
 
 if __name__ == "__main__":
-    train_model(num_epochs=10)
+    train_model(num_epochs=10, lambda_aux=0.8)

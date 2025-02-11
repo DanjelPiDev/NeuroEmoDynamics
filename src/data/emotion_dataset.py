@@ -6,8 +6,7 @@ from utils.helper_functions import pad_sequence, encode_text
 
 class EmotionDataset(Dataset):
     def __init__(self, split, vocab, max_len=32):
-        # emotion-english-distilroberta-base uses multiple datasets
-        ds = load_dataset("emotion", split=split)
+        ds = load_dataset("dair-ai/emotion", split=split)
         self.texts = ds["text"]
         self.labels = ds["label"]
         self.vocab = vocab
