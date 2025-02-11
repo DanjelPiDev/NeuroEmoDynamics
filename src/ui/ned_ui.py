@@ -184,13 +184,15 @@ class MainWindow(QWidget):
             text_input_tensor = torch.tensor([encoded] * batch_size, dtype=torch.long, device=device)
 
             with torch.no_grad():
-                spikes, voltages, logits, aux_logits, serotonin, dopamine, norepinephrine = self.model(
+                spikes, voltages, logits, aux_logits, serotonin, dopamine, norepinephrine, self_ref_score = self.model(
                     sensory_input, reward_signal, text_input_tensor, profile_ids
                 )
 
             predicted_classes = logits.argmax(dim=1).cpu().numpy()
             predicted_emotions = [label_to_emotion.get(idx, "unknown") for idx in predicted_classes]
-            self.result_label.setText("Predicted emotions: " + ", ".join(predicted_emotions))
+            predicted_emotions = list(set(predicted_emotions))
+            self.result_label.setStyleSheet("QLabel { color: #cc8427; font-weight: bold; }")
+            self.result_label.setText("Predicted Emotions:\n\n" + ", ".join(predicted_emotions))
 
             avg_voltage = voltages[:, 0, :].mean(dim=1).cpu().numpy()
             time_steps = np.arange(timesteps)
