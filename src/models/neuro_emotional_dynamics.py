@@ -152,8 +152,8 @@ class NeuroEmoDynamics(nn.Module):
         integ_out = self.integ_norm(integ_out)
 
         override_score = torch.sigmoid(self.text_override_layer(text_mod))
-        override_boost = (positive_scores * self_ref_score)
-        override_score = torch.clamp(override_score + override_boost, 0, 1)
+        override_boost = (positive_scores * self_ref_score) * 1.5
+        override_score = torch.clamp(override_score + override_boost, 0, 1.5)
 
         w = self.fusion_gate(torch.cat([text_mod, integ_out], dim=-1))
         w = torch.max(w, override_score)
@@ -189,7 +189,7 @@ class NeuroEmoDynamics(nn.Module):
 
 
 def hybrid_loss(logits, targets, neurotransmitters, profile_ids, self_ref_scores,
-                alpha=0.7, beta=0.2, gamma=0.1):
+                alpha=0.8, beta=0.1, gamma=0.1):
     ce_loss = F.cross_entropy(logits, targets)
 
     # Neuromodulatory consistency loss
@@ -212,11 +212,16 @@ def hybrid_loss(logits, targets, neurotransmitters, profile_ids, self_ref_scores
     eps = 1e-8
     prob_emotions = F.softmax(logits, dim=1) + eps
     emotion_bias = torch.tensor([
-        [0.8, 0.1, 0.1, 0.0, 0.0, 0.0],  # Depressed
-        [0.1, 0.1, 0.1, 0.7, 0.0, 0.0],  # Anxious
-        [0.1, 0.3, 0.3, 0.1, 0.1, 0.1],  # Healthy
-        [0.0, 0.2, 0.1, 0.1, 0.6, 0.0],  # Impulsive
-        [0.1, 0.1, 0.2, 0.1, 0.1, 0.4]  # Resilient
+        # Depressed (allow more joy/surprise)
+        [0.5, 0.2, 0.1, 0.0, 0.1, 0.1],
+        # Anxious (allow calm/joy)
+        [0.1, 0.3, 0.1, 0.4, 0.0, 0.1],
+        # Healthy
+        [0.1, 0.3, 0.3, 0.1, 0.1, 0.1],
+        # Impulsive
+        [0.0, 0.2, 0.1, 0.1, 0.6, 0.0],
+        # Resilient (allow surprise)
+        [0.1, 0.2, 0.1, 0.1, 0.1, 0.4]
     ], device=profile_ids.device)
 
     kl_per_sample = F.kl_div(
@@ -255,7 +260,7 @@ def train_model(num_epochs=10, batch_size=16, timesteps=50, lr=1e-3, lambda_aux=
         2: 'healthy',  # love
         3: 'impulsive',  # anger
         4: 'anxious',  # fear
-        5: 'resilient'  # surprise / healthy too?
+        5: 'healthy'  # surprise - now mapped to healthy instead of resilient
     }
 
     profile_to_idx = {
@@ -316,7 +321,7 @@ def train_model(num_epochs=10, batch_size=16, timesteps=50, lr=1e-3, lambda_aux=
             reward_signal = torch.cat(reward_signals, dim=0)
 
             optimizer.zero_grad()
-            spks, volts, logits, aux_logits, serotonin, dopamine, norepinephrine, self_ref_score  = model(
+            spks, volts, logits, aux_logits, serotonin, dopamine, norepinephrine, self_ref_score = model(
                 sensory_input, reward_signal, text_in, profile_ids
             )
 
@@ -370,7 +375,7 @@ def train_model(num_epochs=10, batch_size=16, timesteps=50, lr=1e-3, lambda_aux=
                 sensory_input = torch.cat(sensory_inputs, dim=1)
                 reward_signal = torch.cat(reward_signals, dim=0)
 
-                spks, volts, logits, aux_logits, serotonin, dopamine, norepinephrine, self_ref_score  = model(
+                spks, volts, logits, aux_logits, serotonin, dopamine, norepinephrine, self_ref_score = model(
                     sensory_input, reward_signal, text_in, profile_ids
                 )
 

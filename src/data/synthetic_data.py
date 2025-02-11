@@ -26,8 +26,8 @@ def generate_synthetic_data(profile: str,
         sensory_input *= 1.0
         reward_signal *= 0.5
     elif p == 'depressed':
-        sensory_input *= 0.8
-        reward_signal = reward_signal * 0.2 - 0.5
+        sensory_input *= 0.9
+        reward_signal = reward_signal * 0.4 - 0.3
     elif p == 'anxious':
         sensory_input *= 1.2
         reward_signal = reward_signal * 1.0 + 0.5
