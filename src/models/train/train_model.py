@@ -35,15 +35,15 @@ def hybrid_loss(logits, targets, neurotransmitters, profile_ids, self_ref_scores
     eps = 1e-8
     prob_emotions = F.softmax(logits, dim=1) + eps
     emotion_bias = torch.tensor([
-        # Depressed (allow more joy/surprise)
-        [0.5, 0.2, 0.1, 0.0, 0.1, 0.1],
-        # Anxious (allow calm/joy)
+        # Depressed
+        [0.8, 0.04, 0.04, 0.04, 0.04, 0.04],
+        # Anxious
         [0.1, 0.3, 0.1, 0.4, 0.0, 0.1],
         # Healthy
         [0.1, 0.3, 0.3, 0.1, 0.1, 0.1],
         # Impulsive
         [0.0, 0.2, 0.1, 0.1, 0.6, 0.0],
-        # Resilient (allow surprise)
+        # Resilient
         [0.1, 0.2, 0.1, 0.1, 0.1, 0.4]
     ], device=profile_ids.device)
 
@@ -68,7 +68,35 @@ def generate_profile_signals(profile: str, batch_size: int, device: str):
     return torch.full((batch_size,), profile_map[profile], device=device)
 
 
-def train_model(num_epochs=10, batch_size=16, timesteps=50, lr=1e-3, lambda_aux=0.5):
+def get_profile_by_bias(batch_labels, bias_prob: float, device):
+    emotion_to_preferred_profile = {
+        0: 'depressed',  # sadness
+        1: 'healthy',    # joy
+        2: 'healthy',    # love
+        3: 'impulsive',  # anger
+        4: 'anxious',    # fear
+        5: 'healthy'     # surprise (or resilient)
+    }
+
+    profile_to_idx = {
+        'depressed': 0,
+        'anxious': 1,
+        'healthy': 2,
+        'impulsive': 3,
+        'resilient': 4
+    }
+
+    profile_ids = []
+    for l in batch_labels:
+        if torch.rand(1).item() < bias_prob:
+            preferred = emotion_to_preferred_profile[l.item()]
+            profile_ids.append(profile_to_idx[preferred])
+        else:
+            profile_ids.append(torch.randint(0, 5, (1,)).item())
+    return torch.tensor(profile_ids, device=device)
+
+
+def train_model(num_epochs=10, batch_size=16, timesteps=50, lr=1e-3, lambda_aux=0.5, bias_prob = 0.8):
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
     # Load dataset (using Hugging Face's datasets)
@@ -111,10 +139,8 @@ def train_model(num_epochs=10, batch_size=16, timesteps=50, lr=1e-3, lambda_aux=
             text_in = batch["text"].to(device)
             batch_labels = batch["label"].to(device)
 
-            # Generate profile signals for the batch
-            profile_ids = torch.randint(0, 5, (batch_size,), device=device)
+            profile_ids = get_profile_by_bias(batch_labels, bias_prob, device)
 
-            # Generate synthetic inputs per sample
             sensory_inputs = []
             reward_signals = []
             for pid in profile_ids:
@@ -166,7 +192,7 @@ def train_model(num_epochs=10, batch_size=16, timesteps=50, lr=1e-3, lambda_aux=
                 text_in = batch["text"].to(device)
                 batch_labels = batch["label"].to(device)
 
-                profile_ids = torch.randint(0, 5, (batch_size,), device=device)
+                profile_ids = get_profile_by_bias(batch_labels, bias_prob, device)
 
                 sensory_inputs = []
                 reward_signals = []
