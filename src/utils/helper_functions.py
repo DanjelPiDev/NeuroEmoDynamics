@@ -2,7 +2,7 @@ import re
 from collections import Counter
 
 
-def simple_tokenize(text):
+def tokenize(text):
     text = text.lower()
     text = re.sub(r'[^a-z0-9\s]', '', text)
     return text.split()
@@ -11,7 +11,7 @@ def simple_tokenize(text):
 def build_vocab(texts, min_freq=2, max_size=10000):
     counter = Counter()
     for text in texts:
-        tokens = simple_tokenize(text)
+        tokens = tokenize(text)
         counter.update(tokens)
     # Keep only words above min frequency and up to max_size
     vocab = {"<pad>": 0, "<unk>": 1}
@@ -22,7 +22,7 @@ def build_vocab(texts, min_freq=2, max_size=10000):
 
 
 def encode_text(text, vocab):
-    tokens = simple_tokenize(text)
+    tokens = tokenize(text)
     return [vocab.get(token, vocab["<unk>"]) for token in tokens]
 
 

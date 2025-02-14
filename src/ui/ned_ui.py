@@ -26,12 +26,12 @@ from utils.helper_functions import build_vocab
 from safetensors.torch import load_file
 
 
-def simple_tokenize(text):
+def tokenize(text):
     return text.lower().split()
 
 
 def encode_text(text, vocab):
-    return [vocab.get(token, vocab["<unk>"]) for token in simple_tokenize(text)]
+    return [vocab.get(token, vocab["<unk>"]) for token in tokenize(text)]
 
 
 def pad_sequence(seq, max_len, pad_value=0):
