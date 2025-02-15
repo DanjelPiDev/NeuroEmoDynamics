@@ -23,16 +23,16 @@ class NeuroEmoDynamics(nn.Module):
         # Neural components
         self.prefrontal = LIFLayer(512, V_th=1.2, tau=30.0,
                                    neuromod_transform=lambda x: torch.sigmoid(3 * x),
-                                   device=self.device, batch_size=batch_size)
+                                   device=self.device, batch_size=batch_size, learnable_threshold=True, learnable_eta=True, learnable_tau=True)
 
         self.amygdala = LIFLayer(256, noise_std=0.3, use_adaptive_threshold=False,
-                                 device=self.device, batch_size=batch_size)
+                                 device=self.device, batch_size=batch_size, learnable_threshold=True, learnable_eta=True, learnable_tau=True)
         self.hippocampus = LIFLayer(256, V_th=1.1, tau=25.0,
                                     neuromod_transform=lambda x: torch.sigmoid(2.5 * x),
-                                    device=self.device, batch_size=batch_size)
+                                    device=self.device, batch_size=batch_size, learnable_threshold=True, learnable_eta=True, learnable_tau=True)
         self.thalamus = LIFLayer(256, V_th=1.0, tau=20.0,
                                  neuromod_transform=lambda x: torch.sigmoid(3 * x),
-                                 device=self.device, batch_size=batch_size)
+                                 device=self.device, batch_size=batch_size, learnable_threshold=True, learnable_eta=True, learnable_tau=True)
 
         # Connectivity
         self.pfc_amyg = nn.Linear(512, 256)
@@ -46,7 +46,7 @@ class NeuroEmoDynamics(nn.Module):
         self.integrator = nn.Linear(1792, 1024)
         self.striatum = LIFLayer(1024, base_alpha=4.0, recovery_rate=0.15,
                                  device=self.device, batch_size=batch_size,
-                                 neuromod_transform=lambda x: torch.sigmoid(3 * x))
+                                 neuromod_transform=lambda x: torch.sigmoid(3 * x), learnable_threshold=True, learnable_eta=True, learnable_tau=True)
 
         self.feedback = nn.Linear(1024, 512)
         # STILL IN WORK...
