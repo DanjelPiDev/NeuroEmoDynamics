@@ -53,6 +53,9 @@ def hybrid_loss(logits, targets, neurotransmitters, profile_ids, self_ref_scores
         reduction='batchmean'
     )
     coherence_loss = (kl_per_sample * (1 - self_ref_scores.squeeze())).mean()
+    # Invert coherence loss at self-ref & positive emotion
+    override_factor = self_ref_scores.squeeze() * prob_emotions[:, 1]  # 1 = joy
+    coherence_loss = coherence_loss * (1 - override_factor)
 
     return alpha * ce_loss + beta * neuromod_loss + gamma * coherence_loss
 
@@ -86,17 +89,14 @@ def get_profile_by_bias(batch_labels, bias_prob: float, device):
         'resilient': 4
     }
 
-    profile_ids = []
-    for l in batch_labels:
-        if torch.rand(1).item() < bias_prob:
-            preferred = emotion_to_preferred_profile[l.item()]
-            profile_ids.append(profile_to_idx[preferred])
-        else:
-            profile_ids.append(torch.randint(0, 5, (1,)).item())
-    return torch.tensor(profile_ids, device=device)
+    return [
+        torch.randint(0, 5, (1,)).item() if torch.rand(1).item() > bias_prob
+        else profile_to_idx[emotion_to_preferred_profile[l.item()]]
+        for l in batch_labels
+    ]
 
 
-def train_model(num_epochs=10, batch_size=16, timesteps=50, lr=1e-3, lambda_aux=0.5, bias_prob=0.8):
+def train_model(num_epochs=10, batch_size=16, timesteps=50, lr=1e-3, lambda_aux=0.5, bias_prob=0.5):
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
     # Load dataset (using Hugging Face's datasets)
@@ -170,7 +170,9 @@ def train_model(num_epochs=10, batch_size=16, timesteps=50, lr=1e-3, lambda_aux=
                 profile_ids=profile_ids,
                 self_ref_scores=self_ref_score
             )
-            aux_loss = F.cross_entropy(aux_logits, batch_labels)
+            weight = 1 + self_ref_score.squeeze()
+            aux_loss = (F.cross_entropy(aux_logits, batch_labels, reduction='none') * weight).mean()
+
             total_loss = primary_loss + lambda_aux * aux_loss
 
             total_loss.backward()
