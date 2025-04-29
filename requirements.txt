@@ -5,5 +5,5 @@ plotly==5.18.0
 safetensors==0.5.2
 scikit_learn==1.3.2
 snn_neurons.egg==info
-torch==2.5.1
-~atplotlib==3.8.1
+torch>=2.6.0
+matplotlib==3.8.1
