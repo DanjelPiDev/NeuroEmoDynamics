@@ -280,4 +280,4 @@ def train_model(num_epochs=10, batch_size=16, timesteps=50, lr=1e-3, lambda_aux=
 
 if __name__ == "__main__":
     # Because of random profile selection more epochs are needed [default: 10 -> 50]
-    train_model(num_epochs=10, lambda_aux=0.5, timesteps=16)
+    train_model(num_epochs=4, lambda_aux=0.5, timesteps=16)

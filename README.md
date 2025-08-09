@@ -2,6 +2,12 @@
 
 > This project is a WIP and is created purely out of interest and curiosity (And I'm kinda of bored).
 
+> The newest version is much more stable and predicts emotions more accurately than the previous one, which was
+> more of a proof of concept. The new version is also much more modular, allowing for
+> easier experimentation with different configurations and profiles.
+> 
+> **Hint**: 4 Epochs is enough to get a good result, but you can train it for longer if you want (Maybe add some dropouts etc.).
+
 NeuroEmoDynamics is a biologically inspired spiking neural network (SNN) designed to simulate complex cognitive and
 emotional states. The project uses by
 own [Extended LIF Neurons](https://github.com/DanjelPiDev/Extended_LIF_Neurons), by using feedback and

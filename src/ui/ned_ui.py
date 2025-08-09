@@ -135,7 +135,6 @@ class MainWindow(QWidget):
             QMessageBox.critical(self, "Error", str(e))
 
     def load_model_file(self):
-        # Open a file dialog to select the model checkpoint (.safetensors file)
         file_path, _ = QFileDialog.getOpenFileName(
             self, "Select Model Checkpoint", "checkpoints",
             "SafeTensor files (*.safetensors);;All Files (*)"
@@ -144,14 +143,42 @@ class MainWindow(QWidget):
             return
 
         try:
-            # Instantiate and load the model
-            model_instance = NeuroEmoDynamics(vocab, num_classes=num_of_classes, batch_size=batch_size)
-            state_dict = load_file(file_path)
-            model_instance.load_state_dict(state_dict)
-            model_instance.to(device)
+            model_instance = NeuroEmoDynamics(vocab, num_classes=num_of_classes, batch_size=batch_size).to(device)
+
+            ckpt = load_file(file_path)  # safetensors: immer CPU-Tensors
+
+            emb_key = "text_encoder.embedding.weight"
+            if emb_key in ckpt:
+                w_ckpt = ckpt[emb_key]
+                w = model_instance.text_encoder.embedding.weight
+                if w_ckpt.shape != w.shape:
+                    with torch.no_grad():
+                        n = min(w.shape[0], w_ckpt.shape[0])
+                        d = min(w.shape[1], w_ckpt.shape[1])
+                        w[:n, :d].copy_(w_ckpt[:n, :d])
+                    del ckpt[emb_key]
+
+            model_sd = model_instance.state_dict()
+            filtered = {k: v for k, v in ckpt.items() if k in model_sd and model_sd[k].shape == v.shape}
+            missing_after_filter = [k for k in model_sd.keys() if k not in filtered]
+            unexpected = [k for k in ckpt.keys() if k not in model_sd]
+
+            model_instance.load_state_dict(filtered, strict=False)
+
+            if hasattr(model_instance, "prev_feedback"):
+                model_instance.prev_feedback = torch.zeros(batch_size, 512, device=device)
+
             model_instance.eval()
             self.model = model_instance
-            QMessageBox.information(self, "Success", "Model loaded successfully!")
+
+            msg = []
+            if unexpected:
+                msg.append(f"Unexpected: {len(unexpected)}")
+            if missing_after_filter:
+                msg.append(f"Missing: {len(missing_after_filter)}")
+            info = " ( " + ", ".join(msg) + " )" if msg else ""
+            QMessageBox.information(self, "Success", f"Model loaded successfully{info}!")
+
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to load model: {e}")
 
