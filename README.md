@@ -4,7 +4,7 @@
 
 NeuroEmoDynamics is a biologically inspired spiking neural network (SNN) designed to simulate complex cognitive and
 emotional states. The project uses by
-own [Extended LIF Neurons](https://github.com/NullPointerExcy/Extended_LIF_Neurons), by using feedback and
+own [Extended LIF Neurons](https://github.com/DanjelPiDev/Extended_LIF_Neurons), by using feedback and
 cross-connections among key brain regions, including the prefrontal cortex, amygdala, hippocampus, thalamus, and
 striatum, while integrating text-based emotion analysis.
 
@@ -92,16 +92,14 @@ pip install -r requirements.txt
 
 ## Roadmap
 
-- [ ] Improve text-based emotion influence.
-- [ ] Optimize the LIF neuron feedback mechanisms.
+- [x] Improve text-based emotion influence.
+- [x] Optimize the LIF neuron feedback mechanisms.
 - [ ] Extend visualization tools to include real-time simulation.
 - [ ] Experiment with reinforcement learning for adaptive emotion modulation.
 
 ## References
 
 This project uses the dataset **[emotion](https://huggingface.co/datasets/dair-ai/emotion)** from Hugging Face.
-
-If you use this dataset, please cite:
 
 ```bibtex
 @inproceedings{saravia-etal-2018-carer,
