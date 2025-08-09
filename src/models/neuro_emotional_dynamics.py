@@ -198,7 +198,7 @@ class NeuroEmoDynamics(nn.Module):
         T_str = 10
         str_in = integ_out.unsqueeze(0).expand(T_str, -1, -1)  # (T,B,1024)
 
-        # reward_signal: (B,) or (B,1024) → broadcast to (T,B,1|1024)
+        # reward_signal: (B,) or (B,1024) -> broadcast to (T,B,1|1024)
         if reward_signal.dim() == 1:
             reward_T = reward_signal.view(1, -1, 1).expand(T_str, -1, 1)
         elif reward_signal.dim() == 2:

@@ -481,19 +481,19 @@ if __name__ == '__main__':
             x=x_amyg, y=y_amyg, z=z_amyg,
             mode='lines',
             line=dict(color='rgba(255,50,50,0.4)', width=1.5),
-            name='PFC→Amygdala'
+            name='PFC->Amygdala'
         ),
         go.Scatter3d(
             x=x_hipp, y=y_hipp, z=z_hipp,
             mode='lines',
             line=dict(color='rgba(50,150,255,0.4)', width=1.5),
-            name='PFC→Hippocampus'
+            name='PFC->Hippocampus'
         ),
         go.Scatter3d(
             x=x_thal, y=y_thal, z=z_thal,
             mode='lines',
             line=dict(color='rgba(100,200,100,0.4)', width=1.5),
-            name='PFC→Thalamus'
+            name='PFC->Thalamus'
         ),
         go.Scatter3d(
             x=x_striatum, y=y_striatum, z=z_striatum,
