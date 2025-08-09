@@ -59,7 +59,7 @@ striatum, while integrating text-based emotion analysis.
 
 <div align="center">
     <img src="images/NAV.png" alt="Interactive Visualization" width="1000"/>
-</div
+</div>
 
 ## Installation
 
