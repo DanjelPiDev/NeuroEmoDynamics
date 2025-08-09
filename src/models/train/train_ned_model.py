@@ -134,7 +134,6 @@ def train_model(num_epochs=10, batch_size=16, timesteps=50, lr=1e-3, lambda_aux=
     optimizer = optim.AdamW(model.parameters(), lr=lr)
     scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.5)
 
-    # ===== AMP setup =====
     use_amp = (device == "cuda")
     amp_dtype = torch.bfloat16 if (use_amp and torch.cuda.is_bf16_supported()) else torch.float16
     scaler = torch.cuda.amp.GradScaler(enabled=use_amp)
@@ -169,7 +168,7 @@ def train_model(num_epochs=10, batch_size=16, timesteps=50, lr=1e-3, lambda_aux=
 
             optimizer.zero_grad(set_to_none=True)
 
-            # ===== Forward + Loss unter autocast =====
+            # ===== Forward + Loss autocast =====
             with torch.autocast(device_type="cuda", dtype=amp_dtype, enabled=use_amp):
                 spks, volts, logits, aux_logits, serotonin, dopamine, norepinephrine, self_ref_score = model(
                     sensory_input, reward_signal, text_in, profile_ids
@@ -230,7 +229,6 @@ def train_model(num_epochs=10, batch_size=16, timesteps=50, lr=1e-3, lambda_aux=
                 sensory_input = torch.cat(sensory_inputs, dim=1)
                 reward_signal = torch.cat(reward_signals, dim=0)
 
-                # auch unter autocast (kein scaler nötig)
                 with torch.autocast(device_type="cuda", dtype=amp_dtype, enabled=use_amp):
                     spks, volts, logits, aux_logits, serotonin, dopamine, norepinephrine, self_ref_score = model(
                         sensory_input, reward_signal, text_in, profile_ids
