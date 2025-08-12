@@ -8,9 +8,9 @@
 > 
 > **Hint**: 4 Epochs is enough to get a good result, but you can train it for longer if you want (Maybe add some dropouts etc.).
 
-NeuroEmoDynamics is a biologically inspired spiking neural network (SNN) designed to simulate complex cognitive and
+NeuroEmoDynamics is a biologically inspired quantum spiking neural network (QSNN) designed to simulate complex cognitive and
 emotional states. The project uses by
-own [Extended LIF Neurons](https://github.com/DanjelPiDev/Extended_LIF_Neurons), by using feedback and
+own [QLIF-Neurons](https://github.com/DanjelPiDev/QLIF-Neurons), by using feedback and
 cross-connections among key brain regions, including the prefrontal cortex, amygdala, hippocampus, thalamus, and
 striatum, while integrating text-based emotion analysis.
 
@@ -28,12 +28,13 @@ striatum, while integrating text-based emotion analysis.
 - **Striatum Integration:**
     - A final layer that aggregates signals for state estimation and emotional decision-making.
 
-### Extended LIF Neuron Model
+### QLIF-Neuron Model
 
-- Uses an enhanced Leaky Integrate-and-Fire (LIF) model with:
+- Uses an enhanced Quantum Leaky Integrate-and-Fire (QLIF) model with:
     - Neuromodulation mechanisms (serotonin, dopamine, norepinephrine) that regulate different regions.
     - Adaptive thresholds and noise integration.
     - Cross-neural interaction to simulate brain dynamics.
+    - See [QLIF-Neurons](https://github.com/DanjelPiDev/QLIF-Neurons) for more information.
 
 ### Text-Based Emotion Analysis
 
