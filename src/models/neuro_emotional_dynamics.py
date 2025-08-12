@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from layers.torch_layers import LIFLayer
+from qlif_layers.qlif_layer import QLIFLayer
 from models.text_encoder import TextEncoder
 
 
@@ -22,7 +22,7 @@ class NeuroEmoDynamics(nn.Module):
 
         # ===== LIF areas =====
         # Prefrontal: deterministic, Serotonin as Gain (external_modulation)
-        self.prefrontal = LIFLayer(
+        self.prefrontal = QLIFLayer(
             num_neurons=512, V_th=1.2, tau=30.0, stochastic=False,
             neuromod_transform=lambda x: torch.sigmoid(3 * x),
             neuromod_mode="gain", neuromod_strength=1.0,
@@ -30,20 +30,20 @@ class NeuroEmoDynamics(nn.Module):
         )
 
         # Amygdala: stochastic (we give it NE as gain)
-        self.amygdala = LIFLayer(
+        self.amygdala = QLIFLayer(
             num_neurons=256, noise_std=0.3, use_adaptive_threshold=False, stochastic=True,
-            learnable_threshold=True, learnable_eta=True, learnable_tau=True
+            learnable_threshold=True, learnable_eta=True, learnable_tau=True,
         )
 
         # Hippocampus: adaptive Threshold (without modulation)
-        self.hippocampus = LIFLayer(
+        self.hippocampus = QLIFLayer(
             num_neurons=256, V_th=1.1, tau=25.0, stochastic=False, use_adaptive_threshold=True,
             neuromod_mode="off",
             learnable_threshold=True, learnable_eta=True, learnable_tau=True
         )
 
         # Thalamus: Serotonin-Gain (take S[:256] as Mod-Signal)
-        self.thalamus = LIFLayer(
+        self.thalamus = QLIFLayer(
             num_neurons=256, V_th=1.0, tau=20.0, stochastic=False,
             neuromod_transform=lambda x: torch.sigmoid(3 * x),
             neuromod_mode="gain", neuromod_strength=0.5,
@@ -51,7 +51,7 @@ class NeuroEmoDynamics(nn.Module):
         )
 
         # Striatum: DSP + Dopamine as prob_slope-Modulation
-        self.striatum = LIFLayer(
+        self.striatum = QLIFLayer(
             num_neurons=1024, base_alpha=4.0, recovery_rate=0.15,
             stochastic=True, allow_dynamic_spike_probability=True,
             neuromod_transform=lambda x: torch.sigmoid(3 * x),
