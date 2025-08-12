@@ -129,5 +129,5 @@ This project uses the dataset **[emotion](https://huggingface.co/datasets/dair-a
 
 ## License
 
-[MIT License](LICENSE)
+[AGPL-3.0 License](./LICENSE)
 
