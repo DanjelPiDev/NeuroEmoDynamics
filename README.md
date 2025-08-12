@@ -1,6 +1,6 @@
-# NeuroEmoDynamics: A Neurocognitive Profiling Spiking Neural Network
+# NeuroEmoDynamics: A Neurocognitive Profiling Quantum Spiking Neural Network (QSNN)
 
-> This project is a WIP and is created purely out of interest and curiosity (And I'm kinda of bored).
+> This project is created purely out of interest and curiosity.
 
 > The newest version is much more stable and predicts emotions more accurately than the previous one, which was
 > more of a proof of concept. The new version is also much more modular, allowing for

@@ -275,9 +275,10 @@ def train_model(num_epochs=10, batch_size=16, timesteps=50, lr=1e-3, lambda_aux=
                 }, f)
             print("Model saved!")
 
-    save_file(model.state_dict(), "../../checkpoints/neuro_emo_dynamics_v10.safetensors")
+    save_file(model.state_dict(), "../../checkpoints/neuro_emo_dynamics_v10q1.safetensors")
 
 
 if __name__ == "__main__":
-    # Because of random profile selection more epochs are needed [default: 10 -> 50]
+    # 4 Epochs, 16 timesteps, lambda_aux=0.5 (Increase epoch if needed, but overfitting may occur)
+    # If you want to train for more epochs, consider using a lower learning rate or add dropout.
     train_model(num_epochs=4, lambda_aux=0.5, timesteps=16)
