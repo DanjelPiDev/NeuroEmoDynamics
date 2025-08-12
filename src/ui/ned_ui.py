@@ -145,7 +145,7 @@ class MainWindow(QWidget):
         try:
             model_instance = NeuroEmoDynamics(vocab, num_classes=num_of_classes, batch_size=batch_size).to(device)
 
-            ckpt = load_file(file_path)  # safetensors: immer CPU-Tensors
+            ckpt = load_file(file_path)
 
             emb_key = "text_encoder.embedding.weight"
             if emb_key in ckpt:
